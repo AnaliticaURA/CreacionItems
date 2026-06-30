@@ -1,0 +1,1002 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Creador de Planos URA - SIESA</title>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<style>
+  :root {
+    --ura-charcoal: #2C2B28;
+    --ura-charcoal-soft: #3a3935;
+    --ura-terracotta: #C4704A;
+    --ura-terracotta-dark: #a85a37;
+    --ura-cream: #F5F4F0;
+    --ura-cream-warm: #ECEAE3;
+    --ura-border: #d8d4c8;
+    --ura-text-muted: #6e6a60;
+    --ura-success: #5d8a4f;
+    --ura-warning: #b8842c;
+    --ura-error: #b04444;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
+    background: var(--ura-cream);
+    color: var(--ura-charcoal);
+    line-height: 1.5;
+    font-size: 14px;
+  }
+  .container { max-width: 1400px; margin: 0 auto; padding: 24px; }
+  header {
+    background: var(--ura-charcoal);
+    color: var(--ura-cream);
+    padding: 20px 32px;
+    border-radius: 6px;
+    margin-bottom: 24px;
+    display: flex; justify-content: space-between; align-items: center;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+  }
+  header h1 { font-size: 22px; font-weight: 600; letter-spacing: 0.5px; }
+  header .subtitle { font-size: 12px; color: rgba(245,244,240,0.7); margin-top: 4px; letter-spacing: 1px; text-transform: uppercase; }
+  .badge {
+    background: var(--ura-terracotta); color: white; padding: 6px 14px;
+    border-radius: 20px; font-size: 11px; font-weight: 600;
+    text-transform: uppercase; letter-spacing: 1px;
+  }
+  /* Steps */
+  .steps {
+    display: flex; gap: 8px; margin-bottom: 24px;
+    background: white; padding: 12px; border-radius: 6px;
+    border: 1px solid var(--ura-border);
+  }
+  .step {
+    flex: 1; padding: 12px 16px; border-radius: 4px;
+    background: var(--ura-cream-warm); color: var(--ura-text-muted);
+    font-size: 12px; font-weight: 500;
+    display: flex; align-items: center; gap: 10px;
+    border-left: 3px solid transparent;
+    transition: all 0.2s;
+  }
+  .step.active { background: var(--ura-charcoal); color: white; border-left-color: var(--ura-terracotta); }
+  .step.done { background: var(--ura-cream); color: var(--ura-charcoal); border-left-color: var(--ura-success); }
+  .step .num {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 22px; height: 22px; border-radius: 50%;
+    background: var(--ura-charcoal); color: white;
+    font-size: 11px; font-weight: bold;
+  }
+  .step.active .num { background: var(--ura-terracotta); }
+  .step.done .num { background: var(--ura-success); }
+  /* Panels */
+  .panel {
+    background: white;
+    border: 1px solid var(--ura-border);
+    border-radius: 6px;
+    padding: 24px;
+    margin-bottom: 20px;
+  }
+  .panel h2 {
+    font-size: 16px; font-weight: 600;
+    color: var(--ura-charcoal);
+    margin-bottom: 8px;
+    padding-bottom: 12px;
+    border-bottom: 2px solid var(--ura-terracotta);
+    display: inline-block;
+  }
+  .panel .desc {
+    color: var(--ura-text-muted);
+    font-size: 13px; margin-bottom: 20px;
+  }
+  /* Drop zone */
+  .dropzone {
+    border: 2px dashed var(--ura-border);
+    border-radius: 6px;
+    padding: 40px 24px;
+    text-align: center;
+    background: var(--ura-cream);
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+  .dropzone:hover, .dropzone.dragover {
+    border-color: var(--ura-terracotta);
+    background: var(--ura-cream-warm);
+  }
+  .dropzone .icon { font-size: 36px; margin-bottom: 12px; color: var(--ura-terracotta); }
+  .dropzone .hint { font-size: 12px; color: var(--ura-text-muted); margin-top: 8px; }
+  /* Buttons */
+  .btn {
+    display: inline-flex; align-items: center; gap: 8px;
+    padding: 10px 20px; border-radius: 4px;
+    font-size: 13px; font-weight: 600;
+    border: none; cursor: pointer;
+    transition: all 0.15s;
+    text-transform: uppercase; letter-spacing: 0.5px;
+  }
+  .btn-primary { background: var(--ura-terracotta); color: white; }
+  .btn-primary:hover { background: var(--ura-terracotta-dark); }
+  .btn-primary:disabled { background: #d4cbb8; cursor: not-allowed; color: #888; }
+  .btn-secondary { background: var(--ura-charcoal); color: white; }
+  .btn-secondary:hover { background: var(--ura-charcoal-soft); }
+  .btn-outline {
+    background: transparent; color: var(--ura-charcoal);
+    border: 1px solid var(--ura-border);
+  }
+  .btn-outline:hover { background: var(--ura-cream); }
+  .btn-row { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 20px; }
+  /* Table */
+  .table-wrap { overflow-x: auto; border: 1px solid var(--ura-border); border-radius: 4px; max-height: 600px; }
+  table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  th { background: var(--ura-charcoal); color: white; padding: 10px 8px; text-align: left;
+       font-weight: 600; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px;
+       position: sticky; top: 0; z-index: 10; white-space: nowrap; }
+  td { padding: 6px 8px; border-bottom: 1px solid var(--ura-border); vertical-align: top; }
+  tr:nth-child(even) td { background: rgba(245,244,240,0.4); }
+  tr.row-warn td { background: rgba(184,132,44,0.07) !important; }
+  tr.row-error td { background: rgba(176,68,68,0.07) !important; }
+  td input, td select {
+    width: 100%; padding: 5px 7px; border: 1px solid var(--ura-border);
+    border-radius: 3px; font: inherit; background: white;
+  }
+  td input:focus, td select:focus { outline: 2px solid var(--ura-terracotta); outline-offset: -1px; }
+  td .missing { background: #fff9e6; border-color: var(--ura-warning); }
+  /* Status pills */
+  .pill {
+    display: inline-block; padding: 2px 10px; border-radius: 10px;
+    font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;
+  }
+  .pill.ok { background: #e2efd9; color: var(--ura-success); }
+  .pill.warn { background: #fbedd2; color: var(--ura-warning); }
+  .pill.err { background: #f7d8d8; color: var(--ura-error); }
+  /* Alert boxes */
+  .alert {
+    padding: 14px 16px; border-radius: 4px; margin-bottom: 16px;
+    border-left: 4px solid;
+    font-size: 13px;
+  }
+  .alert.info { background: #eef4f8; border-color: #4b87b8; color: #2c4d68; }
+  .alert.warn { background: #fdf6e3; border-color: var(--ura-warning); color: #6b4d18; }
+  .alert.err { background: #f9e5e5; border-color: var(--ura-error); color: #762828; }
+  .alert.success { background: #e8f1e2; border-color: var(--ura-success); color: #3a5530; }
+  .alert ul { margin: 8px 0 0 20px; }
+  /* Summary cards */
+  .summary {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    gap: 12px; margin-bottom: 20px;
+  }
+  .card {
+    background: var(--ura-cream); padding: 14px 18px; border-radius: 4px;
+    border-left: 3px solid var(--ura-terracotta);
+  }
+  .card .lbl { font-size: 10px; text-transform: uppercase; color: var(--ura-text-muted); letter-spacing: 1px; }
+  .card .val { font-size: 24px; font-weight: 700; color: var(--ura-charcoal); margin-top: 4px; }
+  /* SKU paste area */
+  textarea.skus {
+    width: 100%; min-height: 200px; padding: 12px;
+    border: 1px solid var(--ura-border); border-radius: 4px;
+    font-family: 'SF Mono', Monaco, Consolas, monospace;
+    font-size: 12px; resize: vertical;
+  }
+  textarea.skus:focus { outline: 2px solid var(--ura-terracotta); outline-offset: -1px; }
+  /* Modal */
+  .modal-bg {
+    position: fixed; inset: 0; background: rgba(44,43,40,0.6);
+    display: none; align-items: center; justify-content: center;
+    z-index: 100;
+  }
+  .modal-bg.show { display: flex; }
+  .modal {
+    background: white; border-radius: 6px; padding: 28px;
+    max-width: 540px; width: 90%; box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+  }
+  .modal h3 {
+    font-size: 16px; font-weight: 600;
+    padding-bottom: 12px; margin-bottom: 16px;
+    border-bottom: 2px solid var(--ura-terracotta);
+  }
+  .modal-buttons { display: flex; gap: 12px; justify-content: flex-end; margin-top: 24px; }
+  .text-muted { color: var(--ura-text-muted); font-size: 12px; }
+  details summary { cursor: pointer; font-weight: 600; color: var(--ura-terracotta); }
+  details { margin-top: 16px; }
+  details .body { padding: 12px 0 0 16px; font-size: 12px; color: var(--ura-text-muted); }
+  .hidden { display: none !important; }
+  .file-list { font-size: 13px; }
+  .file-list li { margin: 6px 0; padding: 8px 12px; background: var(--ura-cream); border-radius: 4px;
+                  display: flex; justify-content: space-between; align-items: center; }
+  .file-list li .name { font-family: 'SF Mono', Monaco, Consolas, monospace; font-size: 12px; }
+  kbd { background: var(--ura-cream-warm); padding: 2px 6px; border-radius: 3px;
+        font-family: 'SF Mono', Monaco, Consolas, monospace; font-size: 11px;
+        border: 1px solid var(--ura-border); }
+</style>
+</head>
+<body>
+<div class="container">
+  <header>
+    <div>
+      <h1>Creador de Planos URA — SIESA</h1>
+      <div class="subtitle">Cadena de Suministro · Planeación</div>
+    </div>
+    <div class="badge">v1.0</div>
+  </header>
+
+  <div class="steps" id="stepsBar">
+    <div class="step active" data-step="1"><span class="num">1</span> Cargar Plantillas</div>
+    <div class="step" data-step="2"><span class="num">2</span> Validar &amp; Editar</div>
+    <div class="step" data-step="3"><span class="num">3</span> Items Nuevos PT</div>
+    <div class="step" data-step="4"><span class="num">4</span> SKUs de SIESA</div>
+    <div class="step" data-step="5"><span class="num">5</span> Planos finales</div>
+  </div>
+
+  <!-- STEP 1: UPLOAD PLANTILLAS -->
+  <div id="panel1" class="panel">
+    <h2>1 · Cargar archivo Plantillas</h2>
+    <p class="desc">La herramienta lee la hoja <strong>Creación de ítems</strong>. Acepta columnas adicionales (COLECCIÓN, ESPECIAL, ITEM MATT) si están presentes.</p>
+    <div class="dropzone" id="dropzone">
+      <div class="icon">📂</div>
+      <div><strong>Arrastra el archivo Plantillas.xlsx</strong> o haz clic para seleccionarlo</div>
+      <div class="hint">El archivo no se sube a ningún servidor — todo el procesamiento ocurre en tu navegador.</div>
+      <input type="file" id="fileInput" accept=".xlsx,.xlsm" style="display:none" />
+    </div>
+    <div id="loadError"></div>
+  </div>
+
+  <!-- STEP 2: VALIDATE & EDIT -->
+  <div id="panel2" class="panel hidden">
+    <h2>2 · Validar y completar información</h2>
+    <p class="desc">Edita cualquier campo directamente. Las celdas resaltadas indican datos obligatorios faltantes.</p>
+
+    <div class="summary" id="summaryCards"></div>
+    <div id="validationAlerts"></div>
+
+    <div class="table-wrap">
+      <table id="itemsTable">
+        <thead>
+          <tr id="theadRow"></tr>
+        </thead>
+        <tbody id="tbodyItems"></tbody>
+      </table>
+    </div>
+
+    <div class="btn-row">
+      <button class="btn btn-outline" onclick="addRow()">+ Agregar fila</button>
+      <button class="btn btn-outline" onclick="revalidate()">Revalidar</button>
+      <button class="btn btn-primary" id="goToStep3Btn" onclick="proceedToPlanoNuevos()">Continuar a generar plano →</button>
+    </div>
+  </div>
+
+  <!-- STEP 3: ITEMS NUEVOS -->
+  <div id="panel3" class="panel hidden">
+    <h2>3 · Plano de Items Nuevos PT</h2>
+    <p class="desc">Generado con base en la información validada. Descárgalo y cárgalo en SIESA.</p>
+    <div class="summary" id="planoNuevosSummary"></div>
+    <div class="table-wrap" style="max-height:350px">
+      <table id="planoNuevosTable">
+        <thead><tr><th>Referencia</th><th>Descr. Item</th><th>Descr. Corta</th><th>Tipo Inv.</th><th>Fecha</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+    <div class="btn-row">
+      <button class="btn btn-outline" onclick="backToStep(2)">← Volver a editar</button>
+      <button class="btn btn-secondary" onclick="downloadPlanoNuevos()">⬇ Descargar Items_Nuevos_PT_-_Ura.xlsx</button>
+      <button class="btn btn-primary" onclick="goToStep(4)">Continuar a SKUs →</button>
+    </div>
+  </div>
+
+  <!-- STEP 4: SIESA SKUs -->
+  <div id="panel4" class="panel hidden">
+    <h2>4 · Ingresar SKUs asignados por SIESA</h2>
+    <p class="desc">Una vez SIESA asigne los SKUs, pégalos aquí o súbelos en un Excel. Asocia cada SKU a su referencia en el mismo orden que fue creada, o como pares <kbd>Referencia&nbsp;TAB&nbsp;SKU</kbd>.</p>
+
+    <div class="alert info">
+      <strong>Opción A:</strong> Pegar lista (un SKU por línea, en el mismo orden que el plano generado)<br>
+      <strong>Opción B:</strong> Pegar pares <code>Referencia&lt;TAB o ;&gt;SKU</code> (uno por línea)<br>
+      <strong>Opción C:</strong> Subir un Excel con dos columnas: Referencia y SKU
+    </div>
+
+    <textarea class="skus" id="skusInput" placeholder="Ejemplo (opción A):
+5427
+5428
+5429
+
+Ejemplo (opción B):
+CAMISETA DNT_127(11-26-AZUL)    5427
+CAMISETA DNT_127(11-26-NEGRO)    5428"></textarea>
+
+    <div class="btn-row">
+      <button class="btn btn-outline" onclick="document.getElementById('skuFile').click()">📂 Subir Excel con SKUs</button>
+      <input type="file" id="skuFile" accept=".xlsx,.xlsm,.csv" style="display:none" />
+      <button class="btn btn-primary" onclick="parseSKUs()">Procesar SKUs →</button>
+    </div>
+
+    <div id="skuPreview" class="hidden" style="margin-top:20px"></div>
+  </div>
+
+  <!-- STEP 5: FINAL PLANOS -->
+  <div id="panel5" class="panel hidden">
+    <h2>5 · Planos finales para SIESA</h2>
+    <p class="desc">Descarga los 3 planos restantes. Cada uno está listo para cargar en SIESA sin edición manual.</p>
+
+    <div class="summary" id="finalSummary"></div>
+
+    <div class="alert success" id="readyMsg" style="display:none">
+      <strong>✓ Planos generados.</strong> Descárgalos a continuación.
+    </div>
+
+    <ul class="file-list" id="finalFiles"></ul>
+
+    <details>
+      <summary>Vista previa de los planos</summary>
+      <div class="body">
+        <div id="previewExtensiones"></div>
+        <div id="previewParametros"></div>
+        <div id="previewCriterios"></div>
+      </div>
+    </details>
+
+    <div class="btn-row">
+      <button class="btn btn-outline" onclick="backToStep(4)">← Volver a SKUs</button>
+      <button class="btn btn-secondary" onclick="downloadAll()">⬇ Descargar todos (ZIP individual)</button>
+      <button class="btn btn-primary" onclick="resetAll()">Empezar de nuevo</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal for missing-fields confirmation -->
+<div class="modal-bg" id="confirmModal">
+  <div class="modal">
+    <h3>Faltan campos obligatorios</h3>
+    <p>Algunos campos críticos están vacíos en una o más filas. ¿Cómo deseas continuar?</p>
+    <div id="modalMissingList" style="margin-top:14px; font-size:12px"></div>
+    <div class="modal-buttons">
+      <button class="btn btn-outline" onclick="closeModal()">← Volver a editar</button>
+      <button class="btn btn-secondary" onclick="confirmProceedAnyway()">Crear sin estos campos</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const CATALOGOS = {"mayores": {"1": [["1", "HOMBRE"], ["2", "MUJER"], ["3", "NIÑO"], ["4", "NIÑA"], ["5", "UNISEX"]], "2": [["1", "BUZO"], ["2", "CAMISETA"], ["3", "CAMISA"], ["4", "CHAQUETA"], ["5", "CHALECO"], ["6", "FALDA"], ["7", "JEAN"], ["8", "JOGGER"], ["9", "PANTALÓN"], ["10", "PANTALONETA"], ["11", "POLO"], ["12", "SHORT"], ["13", "SHORT PLANO"], ["14", "TANK"], ["15", "TOP"], ["16", "TOP ML"], ["17", "TOTEBAG"], ["18", "VESTIDO"], ["19", "GORRAS"], ["20", "MEDIAS"], ["21", "RIÑONERA"], ["22", "SUDADERA"], ["26", "SHORTS DENIM"], ["27", "VESTIDOS DE BAÑO"], ["28", "GORRA"], ["29", "BODY"], ["31", "BOLSO DE TELA"], ["32", "DELANTAL"]], "3": [["1", "ROYALTY"], ["2", "URA"], ["3", "MATTELSA"], ["4", "PERPETUO SOCORRO"], ["5", "CLEMONT"], ["6", "ARMATURA"], ["7", "REMANENCE"], ["8", "UMAN"], ["9", "TOSCANO"], ["10", "MONOIC"], ["11", "MARIO HERNANDEZ"], ["MST", "MONASTERY"], ["12", "ARTURO CALLE"], ["13", "NEA"], ["14", "VÉLEZ"], ["15", "COURT"], ["16", "NAF NAF"], ["17", "HATANDCATTLE"], ["18", "UNDERGOLD"], ["19", "SBQ"], ["20", "GRACIAS VIDA"], ["21", "ESTUDIO DE MODA"], ["22", "DANTE"]], "5": [["1", "125"], ["2", "225"], ["3", "325"], ["4", "425"], ["5", "525"], ["6", "625"], ["7", "725"], ["8", "825"], ["9", "925"], ["10", "1025"], ["11", "1125"], ["12", "1225"], ["13", "1325"], ["14", "1425"], ["15", "1525"], ["16", "Q3-2025"], ["17", "Q4-2025"], ["18", "Q1-2026"], ["19", "Q2-2026"], ["20", "Q3-2026"], ["21", "Q4-2026"], ["22", "126"], ["23", "226"], ["24", "326"], ["25", "426"], ["26", "526"], ["27", "626"], ["28", "726"], ["29", "826"], ["30", "926"], ["31", "1026"], ["32", "1126"], ["33", "1226"], ["34", "1326"], ["35", "1426"], ["36", "127"], ["37", "227"], ["38", "327"], ["39", "427"], ["40", "527"], ["41", "627"], ["42", "727"], ["43", "827"], ["44", "927"], ["45", "1027"], ["46", "1127"], ["47", "1227"], ["48", "1327"]], "7": [["1", "Rlaboratorio"], ["3", "REPROGRAMACION"], ["4", "No aplica"]], "10": [["1", "RAGNO"], ["2", "MIRABILE"], ["3", "LABIRINTO"], ["4", "DIOCESI"], ["5", "MASCHERA"], ["6", "ANTITESI"], ["7", "GRAFFIO"], ["8", "MUTO"], ["9", "CONGUINZIONE"], ["10", "MHONOGRAMA-N"], ["11", "MHONOGRAMA-B"], ["12", "LOGOTIPO-N"], ["13", "LOGOTIPO-B"], ["14", "UNICORNIO-N"], ["15", "PALENQUE-B"], ["16", "PALENQUE-N"], ["17", "MARIPOSAS SOBRIO-B"], ["18", "MARIPOSAS SOBRIO-N"], ["19", "MARIPOSAS ILUS-N"], ["20", "MARIPOSAS ILUS-B"], ["21", "MARIPOSA ARTESANO-B"], ["22", "MARIPOSA ARTESANO-N"], ["23", "UNICORNIO-B"], ["24", "HENLEY"], ["25", "SHIELD"], ["26", "LEAGUE"], ["27", "DREAMERS CLUB"], ["28", "96"], ["29", "NINETYSIX"], ["30", "MONOIC FC"], ["31", "SHIELD SHORT"], ["32", "TOUR EL SOL"], ["33", "HOODIE 1-N"], ["34", "QUARTER ZIP 1-A"], ["35", "JOGGER 1-N"], ["36", "JOGGER 2-A"], ["37", "CAMISETA 1-N"], ["38", "CAMISETA 2-N"], ["39", "CAMISETA 3-N"], ["40", "CAMISETA 4-N"], ["41", "CAMISETA 5-R"], ["42", "CAMISETA 6-C"], ["43", "CAMISETA 7-M"], ["44", "CAMISETA 8-M"], ["45", "CAMISETA 9-N"], ["46", "EIREN"], ["47", "AMAU"], ["48", "ABISSALE"], ["49", "ADERIRE"], ["50", "APOSTOLO"], ["51", "BAGLIORI"], ["52", "CHERUBINO"], ["53", "COLOMBIAMODA"], ["54", "CONGIUNZIONE"], ["55", "DISTRUTTO"], ["56", "HOODIE SHADOW"], ["57", "JARETH"], ["58", "LOGO URA"], ["59", "LUSINGA"], ["60", "MARIPOSA ARTESANO"], ["61", "MARIPOSAS ILUS"], ["62", "MARIPOSAS SOBRIO"], ["63", "MONTANA"], ["64", "MORMORIO"], ["65", "MURAL URA"], ["66", "PALENQUE"], ["67", "PIOMBO"], ["68", "RAW"], ["69", "ROWAN"], ["70", "RUBEDO"], ["71", "SANTITA"], ["72", "SERAFINA"], ["73", "SPETTRALE"], ["74", "SUSSURRO"], ["75", "UNCODED"], ["76", "UNICORNIO"], ["77", "VEGGENTE"], ["78", "PEREIRA"], ["79", "AMOR Y AMISTAD"], ["80", "FT-25"], ["81", "BODY CLOUD"], ["82", "CLOUD TEE"], ["83", "LIGHT TANK TOP"], ["84", "GODIDTEE"], ["85", "517 TEE"], ["86", "OPHANIMTEE"], ["87", "THE NEW TEE"], ["88", "517 BASIC TEE"], ["89", "CLEAN FIT"], ["90", "HALFZIP CLASSIC"], ["91", "FT-26"], ["92", "TERRAIN"], ["93", "BOUND"]], "12": [["1", "MALUMA CREW"], ["2", "REMANENCE"], ["3", "MATTELSA"], ["4", "HOLLS"], ["5", "MEDALLO EN EL MAPA"], ["6", "BOGOTA EN EL MAPA"], ["7", "URA FEST"], ["8", "FESTIVAL25"], ["9", "EL LADO OSCURO"], ["10", "STALLION"], ["11", "EL PARAISO PERDIDO"], ["12", "LA VIA DEL AMOR"], ["13", "LA VIA DE LA SOMBRA"], ["14", "HALFZIP"], ["15", "NIGHT SHIFT"], ["16", "OFF DUTY"], ["17", "DOTACIÓN"], ["18", "BOGOTA FASHION WEEK"], ["19", "FC"], ["20", "CARLOS VIVES"], ["21", "SS26"], ["22", "MEDALLO EN EL MAPA 2.0"], ["23", "OSOS HALLOWEN"], ["24", "ESTEREO PICNIC"], ["25", "AMOR Y AMISTAD 25"], ["26", "SUMMIT"], ["27", "SANTITA"], ["28", "PIOMBO"], ["29", "LUSINGA"], ["30", "CHERUBINO"], ["31", "BAGLIORI"], ["32", "APOSTOLO"], ["33", "ABISSALE"], ["34", "SUSSURRO"], ["35", "SERAFINA"], ["36", "ADERIRE"], ["37", "LA VIA DE LA LUZ"], ["38", "INVICTUS"], ["39", "DOMINUS"], ["40", "LA VIA DE LA ILUMINACIÓN"], ["41", "DOTACION"], ["42", "LA VIA DELL\" OMBRA"], ["43", "DIA DE LA TIERRA"], ["44", "02-2025"], ["45", "CAPSULA ORIENTAL"], ["46", "MADE OF LIGHT"], ["47", "RAW CITY"], ["48", "HERITAGE IN MOTION"], ["49", "MAGARA"], ["50", "MUNDIAL 2026"], ["51", "CAPSULA SARCASTICA"], ["52", "LA VIA DEL FUEGO"], ["53", "LABORATORIO"], ["54", "BG FASHION WEEK"], ["55", "COLOMBIAMODA 2026"], ["56", "ESPECIAL"], ["57", "RECU"], ["58", "RIVIERA SOLAR"], ["59", "ESSENTIAL"], ["60", "226"], ["61", "426"], ["62", "526"], ["63", "626"], ["64", "725"], ["65", "726"], ["66", "826"], ["67", "926"], ["68", "1026"], ["69", "1126"], ["70", "1225"], ["71", "1226"], ["72", "1325"], ["73", "1326"], ["74", "Q1-2026"], ["75", "Q2-2026"], ["76", "Q3-2025"], ["77", "Q4-2025"], ["78", "Q4-2026"], ["79", "127"], ["80", "227"], ["81", "327"], ["82", "427"], ["83", "527"], ["84", "627"], ["85", "727"], ["86", "827"], ["87", "927"], ["88", "1027"], ["89", "1127"], ["90", "1227"], ["91", "1327"], ["92", "DOTACION JULIO 2026"], ["93", "FESTIVAL PERPETUO"], ["94", "FULLZIP LEGACY"], ["95", "SEPTIEMBRE"], ["96", "FT-25"], ["97", "FT-26"], ["98", "RETURN TO FUNCTION"], ["99", "FUTURE REMASTERED"], ["100", "11-26"]], "14": [["1", "ESTANDAR"], ["2", "COMPLEJO"], ["3", "TIPO A"], ["4", "TIPO B"], ["5", "TIPO C"], ["6", "TIPO D"], ["7", "1"], ["8", "2"], ["9", "3"], ["10", "FT"]], "25": [["1", "PUNTO"], ["2", "PLANO"], ["3", "PLANO PESADO"], ["4", "PUNTO PESADO"]]}, "nomCliente": {"ARMATURA": "AMT", "ARTURO CALLE": "ARTC", "CLEMONT": "CLM", "COURT": "CRT", "HATANDCATTLE": "HTCT", "MARIO HERNANDEZ": "MRHR", "MATTELSA": "MTT", "MONASTERY": "MNT", "MONOIC": "MNC", "NAF NAF": "NAF", "NEA": "NEA", "PERPETUO SOCORRO": "PTS", "REMANENCE": "RMN", "ROYALTY": "RYL", "TOSCANO": "TSC", "UMAN": "UMN", "UNDERGOLD": "UNDR", "URA": "URA", "VELEZ": "VLZ", "SBQ": "SBQ", "GRACIAS VIDA": "GCV", "ESTUDIO DE MODA": "EDM", "DANTE": "DNT"}, "nomProyecto": {"625": "625", "02-2025": "2", "BOGOTA EN EL MAPA": "BM", "BOGOTA FASHION WEEK": "BFW", "COLOMBIA TEX": "COL_TEX", "DOMINUS": "DMN", "DOTACION": "DTC", "DOTACIÓN": "DTC", "DOTACION URA FEST": "DTUF", "EL LADO OSCURO": "LOSC", "EL PARAISO PERDIDO": "PRD", "ESPECIAL": "ESP", "FESTIVAL25": "FST25", "FLORECER": "FL", "HALFZIP": "AZF", "HERITAGE IN MOTION": "HRMT", "HOLLS": "HLL", "INVICTUS": "INV", "LA VIA DE LA ILUMINACION": "LVI", "LA VIA DE LA LUZ": "LVL", "LA VIA DE LA SOMBRA": "LVS", "LA VIA DEL AMOR": "LVA", "LA VIA DEL FUEGO": "LVF", "LA VIA DELL' OMBRA": "LVO", "SEPTIEMBRE": "SEP", "LABORATORIO": "LAB", "MALUMA CREW": "MCW", "MATTELSA": "MTT", "MEDALLO EN EL MAPA 2.0": "MM2", "NIGHT SHIFT": "NGSH", "OFF DUTY": "OFD", "11-26": "11-26", "FT-26": "FT-26", "FUTURE REMASTERED": "FRM", "FESTIVAL PERPETUO": "FPT", "RECU": "RC", "REMANENCE": "RMN", "SS26": "SS26", "RETURN TO FUNCTION": "TRF", "1026": "1026", "STALLION": "STL", "SUMMIT": "SMM", "RAW CITY": "RWC", "127": "127", "227": "227", "327": "327", "427": "427", "527": "527", "826": "826", "926": "926", "RETURN TO FUCTION": "RTF", "PIERO": "PIERO", "FC": "FC", "MADE OF LIGHT": "MDL", "1126": "1126", "1226": "1226", "DOTACIÓN JULIO 2026": "DTC_26", "1326": "1326", "CARLOS VIVES": "CRV", "RIVIERA SOLAR": "RSL", "ESSENTIAL": "EST"}};
+</script>
+<script>
+/* ==================================================================
+   STATE & CONFIG
+   ================================================================== */
+// Campos críticos: si faltan, se pide confirmación antes de generar.
+// COMPLEJIDAD y ESPECIAL ya NO son obligatorios.
+// COLECCIÓN no es un campo de entrada: para MATTELSA se deriva automáticamente
+// del PROYECTO; para los demás clientes no aplica.
+// DROP tampoco es obligatorio: si no se diligencia, la referencia se construye
+// solo con REFERENCIA(COLOR) y no se genera el criterio de Drop.
+const REQUIRED = ["GENERO","PROYECTO","TIPO_TEJIDO","CATEGORIA","CLIENTE","LOTE"];
+// Mapping internal field name -> display label
+const FIELD_LABEL = {
+  ITEM_MATT: "Item Mattelsa",
+  GENERO: "Género", CATEGORIA: "Categoría",
+  PROYECTO: "Proyecto", LOTE: "Lote", DROP: "Drop",
+  TIPO_TEJIDO: "Tipo Tejido", COMPLEJIDAD: "Complejidad",
+  CLIENTE: "Cliente", COLOR: "Color (Ref.)",
+  ESPECIAL: "Especial"
+};
+const COLUMN_ORDER = ["CLIENTE","CATEGORIA","GENERO","PROYECTO","DROP","COLOR","ITEM_MATT","LOTE","TIPO_TEJIDO","COMPLEJIDAD","ESPECIAL"];
+
+// Plan IDs used in Items Criterios
+const PLAN_IDS = {
+  GENERO: 1, CATEGORIA: 2, CLIENTE: 3, COLECCION: 5, ESPECIAL: 7,
+  LOTE: 8, DROP: 10, PROYECTO: 12, COMPLEJIDAD: 14, TIPO_TEJIDO: 25
+};
+
+let state = {
+  rows: [],            // [{GENERO,CATEGORIA,...}, ...]
+  planoNuevos: null,   // [[ref, descItem, descCorta, "PTP", fechaInt]]
+  skuMapping: {},      // {referencia: sku}
+  extensiones: null,
+  parametros: null,
+  criterios: null,
+  fecha: yyyymmddToday()
+};
+
+// Build text->mayor lookup per plan
+function buildMayorLookup() {
+  const lookup = {};
+  for (const plan in CATALOGOS.mayores) {
+    lookup[plan] = {};
+    for (const [id, desc] of CATALOGOS.mayores[plan]) {
+      lookup[plan][desc.toUpperCase().trim()] = id;
+    }
+  }
+  return lookup;
+}
+const MAYOR_LOOKUP = buildMayorLookup();
+
+/* ==================================================================
+   UTILITIES
+   ================================================================== */
+function yyyymmddToday() {
+  const d = new Date();
+  return d.getFullYear()*10000 + (d.getMonth()+1)*100 + d.getDate();
+}
+function norm(s) { return s == null ? "" : String(s).trim().toUpperCase(); }
+function isEmpty(v) { return v === null || v === undefined || String(v).trim() === ""; }
+
+function lookupNomCliente(cliente) {
+  if (!cliente) return "";
+  return CATALOGOS.nomCliente[norm(cliente)] || "";
+}
+function lookupNomProyecto(proyecto) {
+  if (!proyecto) return "";
+  return CATALOGOS.nomProyecto[norm(proyecto)] || "";
+}
+function lookupMayor(planId, valueText) {
+  if (planId === PLAN_IDS.LOTE) {
+    // LOTE: numeric passthrough. The mayor equals the lote number.
+    const num = parseInt(valueText, 10);
+    return isNaN(num) ? null : String(num);
+  }
+  const planLookup = MAYOR_LOOKUP[String(planId)] || {};
+  return planLookup[norm(valueText)] || null;
+}
+
+/* ==================================================================
+   STEP NAVIGATION
+   ================================================================== */
+function goToStep(n) {
+  for (let i=1;i<=5;i++) {
+    document.getElementById(`panel${i}`).classList.add('hidden');
+  }
+  document.getElementById(`panel${n}`).classList.remove('hidden');
+  // update step bar
+  document.querySelectorAll('.step').forEach(el => {
+    const s = parseInt(el.dataset.step);
+    el.classList.remove('active','done');
+    if (s < n) el.classList.add('done');
+    else if (s === n) el.classList.add('active');
+  });
+  window.scrollTo({top:0, behavior:'smooth'});
+}
+function backToStep(n) { goToStep(n); }
+
+/* ==================================================================
+   STEP 1: FILE UPLOAD
+   ================================================================== */
+const dz = document.getElementById('dropzone');
+const fileInput = document.getElementById('fileInput');
+dz.onclick = () => fileInput.click();
+dz.ondragover = (e) => { e.preventDefault(); dz.classList.add('dragover'); };
+dz.ondragleave = () => dz.classList.remove('dragover');
+dz.ondrop = (e) => {
+  e.preventDefault(); dz.classList.remove('dragover');
+  if (e.dataTransfer.files[0]) handleFile(e.dataTransfer.files[0]);
+};
+fileInput.onchange = (e) => { if (e.target.files[0]) handleFile(e.target.files[0]); };
+
+async function handleFile(file) {
+  const errBox = document.getElementById('loadError');
+  errBox.innerHTML = "";
+  try {
+    const buf = await file.arrayBuffer();
+    const wb = XLSX.read(buf, {type:'array'});
+    // Find "Creación de ítems" sheet (tolerant)
+    let sheetName = wb.SheetNames.find(n => norm(n).startsWith("CREACI") || norm(n).startsWith("CREACION"));
+    if (!sheetName) {
+      sheetName = wb.SheetNames[0];
+    }
+    const ws = wb.Sheets[sheetName];
+    const arr = XLSX.utils.sheet_to_json(ws, {header:1, defval:null, raw:true});
+    if (arr.length < 1) throw new Error("La hoja '"+sheetName+"' está vacía.");
+
+    const headers = arr[0].map(h => norm(String(h||"")));
+    // Map headers to internal keys
+    const headerMap = {};
+    headers.forEach((h, i) => {
+      const k = mapHeaderToKey(h);
+      if (k) headerMap[k] = i;
+    });
+
+    // Build rows (skip empty rows)
+    state.rows = [];
+    for (let r=1;r<arr.length;r++) {
+      const row = arr[r];
+      if (!row || row.every(c => isEmpty(c))) continue;
+      const obj = {};
+      COLUMN_ORDER.forEach(k => {
+        obj[k] = headerMap[k] !== undefined ? (row[headerMap[k]] == null ? "" : row[headerMap[k]]) : "";
+      });
+      state.rows.push(obj);
+    }
+    if (state.rows.length === 0) {
+      throw new Error("No se encontraron filas con datos en la hoja '"+sheetName+"'.");
+    }
+    renderEditorTable();
+    goToStep(2);
+  } catch(err) {
+    errBox.innerHTML = `<div class="alert err" style="margin-top:16px"><strong>Error al leer archivo:</strong> ${err.message}</div>`;
+  }
+}
+
+function mapHeaderToKey(h) {
+  const m = {
+    "GENERO":"GENERO","GÉNERO":"GENERO",
+    "CATEGORIA":"CATEGORIA","CATEGORÍA":"CATEGORIA",
+    "PROYECTO":"PROYECTO",
+    "LOTE":"LOTE","CANTIDAD":"LOTE",
+    "DROP":"DROP",
+    "TIPO TEJIDO":"TIPO_TEJIDO","TIPO DE TEJIDO":"TIPO_TEJIDO","TEJIDO":"TIPO_TEJIDO",
+    "COMPLEJIDAD":"COMPLEJIDAD",
+    "CLIENTE":"CLIENTE",
+    "COLOR":"COLOR","REFERENCIA":"COLOR","REFERENCIA (COLOR)":"COLOR","REFERENCIA(COLOR)":"COLOR",
+    "ITEM MATT":"ITEM_MATT","ÍTEM MATT":"ITEM_MATT","ITEM MATTELSA":"ITEM_MATT",
+    "ESPECIAL":"ESPECIAL"
+    // Nota: COLECCIÓN ya no se importa como campo independiente. Para MATTELSA
+    // se deriva automáticamente del PROYECTO; para los demás clientes no aplica.
+  };
+  return m[h] || null;
+}
+
+/* ==================================================================
+   STEP 2: EDITOR TABLE
+   ================================================================== */
+function renderEditorTable() {
+  const thead = document.getElementById('theadRow');
+  thead.innerHTML = `<th style="width:50px">#</th><th style="width:80px">Estado</th>` +
+    COLUMN_ORDER.map(k => {
+      const th = `<th>${FIELD_LABEL[k]}</th>`;
+      // Insertar columna informativa "Colección (auto)" justo después de Proyecto
+      return k === "PROYECTO" ? th + `<th style="width:120px">Colección<br><span style="font-weight:400;text-transform:none;font-size:10px">(auto, solo Mattelsa)</span></th>` : th;
+    }).join("");
+
+  const tbody = document.getElementById('tbodyItems');
+  tbody.innerHTML = "";
+  state.rows.forEach((row, idx) => {
+    const tr = document.createElement('tr');
+    const validation = validateRow(row);
+    if (validation.errors.length > 0) tr.classList.add('row-error');
+    else if (validation.warnings.length > 0) tr.classList.add('row-warn');
+
+    const statusCell = validation.errors.length ?
+      `<span class="pill err">Error</span>` :
+      validation.warnings.length ? `<span class="pill warn">Faltan</span>` :
+      `<span class="pill ok">OK</span>`;
+
+    const cells = COLUMN_ORDER.map(k => {
+      const val = row[k] == null ? "" : row[k];
+      const missingCls = (REQUIRED.includes(k) && isEmpty(val)) ? "missing" : "";
+      // For LOTE - numeric, plain input. Use selects for known catalog fields.
+      const choices = getChoices(k);
+      let cellHtml;
+      if (choices) {
+        const opts = ['<option value=""></option>'].concat(
+          choices.map(c => `<option value="${esc(c)}" ${norm(c)===norm(val)?"selected":""}>${esc(c)}</option>`)
+        ).join("");
+        cellHtml = `<td><select class="${missingCls}" data-row="${idx}" data-key="${k}" onchange="updateCell(this)">${opts}</select></td>`;
+      } else {
+        cellHtml = `<td><input class="${missingCls}" data-row="${idx}" data-key="${k}" value="${esc(val)}" oninput="updateCell(this)"/></td>`;
+      }
+      // Insertar celda informativa de Colección justo después de Proyecto
+      if (k === "PROYECTO") {
+        const coleccionVal = computedColeccion(row);
+        cellHtml += `<td class="text-muted" style="text-align:center">${esc(coleccionVal)}</td>`;
+      }
+      return cellHtml;
+    }).join("");
+
+    tr.innerHTML = `<td style="text-align:center;font-weight:600">${idx+1}</td><td>${statusCell}</td>${cells}`;
+    tbody.appendChild(tr);
+  });
+
+  renderSummary();
+  renderValidationAlerts();
+}
+
+// Colección solo aplica para MATTELSA y toma el mismo valor que Proyecto.
+// El resto de clientes no maneja colección.
+function computedColeccion(row) {
+  if (norm(row.CLIENTE) === "MATTELSA") return row.PROYECTO || "";
+  return "—";
+}
+
+function getChoices(key) {
+  const planId = PLAN_IDS[key];
+  if (!planId) return null;
+  if (planId === PLAN_IDS.LOTE) return null;  // numeric free input
+  const arr = CATALOGOS.mayores[String(planId)];
+  if (!arr) return null;
+  return arr.map(([id, desc]) => desc);
+}
+
+function esc(s) {
+  return String(s == null ? "" : s).replace(/[&<>"']/g, c =>
+    ({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[c]));
+}
+
+function updateCell(el) {
+  const idx = parseInt(el.dataset.row);
+  const key = el.dataset.key;
+  state.rows[idx][key] = el.value;
+}
+
+function addRow() {
+  const empty = {};
+  COLUMN_ORDER.forEach(k => empty[k] = "");
+  state.rows.push(empty);
+  renderEditorTable();
+}
+
+function revalidate() { renderEditorTable(); }
+
+function validateRow(row) {
+  const errors = [];   // hard errors (can't generate)
+  const warnings = []; // missing required fields (user must confirm)
+  const cliente = norm(row.CLIENTE);
+
+  // For Mattelsa, ITEM MATT is required (acts as the source code)
+  if (cliente === "MATTELSA" && isEmpty(row.ITEM_MATT)) {
+    // Fallback to COLOR if user typed Mattelsa code there - accept either
+    if (isEmpty(row.COLOR)) {
+      errors.push("ITEM MATT requerido para cliente MATTELSA");
+    }
+  }
+  // For non-Mattelsa: solo COLOR/REFERENCIA es obligatorio.
+  // DROP es opcional — si no se diligencia, la referencia se construye
+  // únicamente con REFERENCIA(COLOR) y no se genera el criterio de Drop.
+  if (cliente && cliente !== "MATTELSA") {
+    if (isEmpty(row.COLOR)) errors.push("COLOR/REFERENCIA requerido (DROP es opcional)");
+  }
+  // Cliente itself
+  if (isEmpty(cliente)) errors.push("CLIENTE es obligatorio");
+  if (isEmpty(row.CATEGORIA)) errors.push("CATEGORIA es obligatoria");
+  if (isEmpty(row.PROYECTO)) errors.push("PROYECTO es obligatorio");
+  // Nomenclatura must resolve
+  if (cliente && !lookupNomCliente(cliente)) errors.push(`Cliente '${cliente}' no existe en nomenclatura`);
+  if (!isEmpty(row.PROYECTO) && !lookupNomProyecto(row.PROYECTO)) errors.push(`Proyecto '${row.PROYECTO}' no existe en nomenclatura`);
+
+  // Critical fields for criterios (warnings if missing)
+  REQUIRED.forEach(k => {
+    if (isEmpty(row[k])) warnings.push(FIELD_LABEL[k]);
+  });
+  return {errors, warnings};
+}
+
+function renderSummary() {
+  const total = state.rows.length;
+  let ok=0, warn=0, err=0;
+  state.rows.forEach(r => {
+    const v = validateRow(r);
+    if (v.errors.length) err++;
+    else if (v.warnings.length) warn++;
+    else ok++;
+  });
+  document.getElementById('summaryCards').innerHTML = `
+    <div class="card"><div class="lbl">Total</div><div class="val">${total}</div></div>
+    <div class="card" style="border-color:var(--ura-success)"><div class="lbl">Listos</div><div class="val">${ok}</div></div>
+    <div class="card" style="border-color:var(--ura-warning)"><div class="lbl">Con avisos</div><div class="val">${warn}</div></div>
+    <div class="card" style="border-color:var(--ura-error)"><div class="lbl">Con errores</div><div class="val">${err}</div></div>
+  `;
+}
+
+function renderValidationAlerts() {
+  const alerts = document.getElementById('validationAlerts');
+  alerts.innerHTML = "";
+  let totalErrors = 0;
+  const errBuckets = {};
+  state.rows.forEach((r, i) => {
+    const v = validateRow(r);
+    v.errors.forEach(e => {
+      errBuckets[e] = errBuckets[e] || [];
+      errBuckets[e].push(i+1);
+    });
+    totalErrors += v.errors.length;
+  });
+  if (totalErrors === 0) return;
+  const lines = Object.entries(errBuckets).map(([e, rows]) =>
+    `<li>${esc(e)} — filas ${rows.join(", ")}</li>`).join("");
+  alerts.innerHTML = `<div class="alert err">
+    <strong>Errores que bloquean la generación (${totalErrors}):</strong>
+    <ul>${lines}</ul>
+  </div>`;
+}
+
+/* ==================================================================
+   STEP 2 → 3 : validation gate + build plano
+   ================================================================== */
+function proceedToPlanoNuevos() {
+  let totalErrors = 0;
+  let warnRows = [];
+  state.rows.forEach((r, i) => {
+    const v = validateRow(r);
+    totalErrors += v.errors.length;
+    if (v.warnings.length > 0) {
+      warnRows.push({idx: i+1, fields: v.warnings});
+    }
+  });
+  if (totalErrors > 0) {
+    alert("Hay errores que impiden generar el plano. Revisa las celdas marcadas en rojo.");
+    return;
+  }
+  if (warnRows.length > 0) {
+    // Show confirmation modal
+    showConfirmModal(warnRows);
+    return;
+  }
+  buildPlanoNuevos();
+  goToStep(3);
+}
+
+function showConfirmModal(warnRows) {
+  const ml = document.getElementById('modalMissingList');
+  ml.innerHTML = '<div class="alert warn"><strong>Campos críticos faltantes:</strong><ul>'
+    + warnRows.map(w => `<li>Fila ${w.idx}: ${w.fields.join(", ")}</li>`).join("")
+    + '</ul></div>'
+    + '<p class="text-muted">Puedes <strong>volver a editar</strong> para completarlos, o <strong>crear sin estos campos</strong> (los criterios faltantes se omitirán en Items Criterios).</p>';
+  document.getElementById('confirmModal').classList.add('show');
+}
+function closeModal() { document.getElementById('confirmModal').classList.remove('show'); }
+function confirmProceedAnyway() {
+  closeModal();
+  buildPlanoNuevos();
+  goToStep(3);
+}
+
+/* ==================================================================
+   BUILD PLANOS
+   ================================================================== */
+function buildPlanoNuevos() {
+  const fecha = yyyymmddToday();
+  state.fecha = fecha;
+
+  const plano = [];   // [[Referencia, Descr.Item, Descr.Corta, Tipo, Fecha], ...]
+  state.rows.forEach(r => {
+    const cliente = norm(r.CLIENTE);
+    const nomC = lookupNomCliente(cliente);
+    const nomP = lookupNomProyecto(r.PROYECTO);
+    const cat = String(r.CATEGORIA||"").toUpperCase().trim();
+
+    const descCorta = `${cat} ${nomC}_${nomP}`;
+    let descLarga, referencia;
+    if (cliente === "MATTELSA") {
+      const matt = String(r.ITEM_MATT || r.COLOR || "").trim();
+      descLarga = `${descCorta}(${matt})`;
+      referencia = matt;
+    } else {
+      const drop = String(r.DROP||"").trim();
+      const color = String(r.COLOR||"").trim();
+      if (drop) {
+        descLarga = `${descCorta}(${drop}-${color})`;
+      } else {
+        descLarga = `${descCorta}(${color})`;
+      }
+      referencia = descLarga;
+    }
+    plano.push([referencia, descLarga, descCorta, "PTP", fecha]);
+  });
+  state.planoNuevos = plano;
+
+  // Render in step 3 panel
+  const tbody = document.querySelector('#planoNuevosTable tbody');
+  tbody.innerHTML = plano.map(row => `<tr>${row.map(c=>`<td>${esc(c)}</td>`).join("")}</tr>`).join("");
+  document.getElementById('planoNuevosSummary').innerHTML = `
+    <div class="card"><div class="lbl">Referencias generadas</div><div class="val">${plano.length}</div></div>
+    <div class="card"><div class="lbl">Fecha de creación</div><div class="val" style="font-size:18px">${formatFecha(fecha)}</div></div>
+  `;
+}
+
+function formatFecha(yyyymmdd) {
+  const s = String(yyyymmdd);
+  return `${s.slice(0,4)}-${s.slice(4,6)}-${s.slice(6,8)}`;
+}
+
+function downloadPlanoNuevos() {
+  const data = [["Referencia","Descr. Item","Descr. Corta","Tipo de inventario","FECHA"]].concat(state.planoNuevos);
+  downloadExcel(data, "Versión", "Items Nuevos PT - Ura.xlsx");
+}
+
+/* ==================================================================
+   STEP 4: SKUs
+   ================================================================== */
+document.getElementById('skuFile').addEventListener('change', async (e) => {
+  if (!e.target.files[0]) return;
+  const buf = await e.target.files[0].arrayBuffer();
+  const wb = XLSX.read(buf, {type:'array'});
+  const ws = wb.Sheets[wb.SheetNames[0]];
+  const arr = XLSX.utils.sheet_to_json(ws, {header:1, defval:null});
+  const lines = arr.filter(r => r && r.some(c => !isEmpty(c)))
+    .map(r => r.filter(c => !isEmpty(c)).map(String).join("\t")).join("\n");
+  document.getElementById('skusInput').value = lines;
+});
+
+function parseSKUs() {
+  const txt = document.getElementById('skusInput').value.trim();
+  if (!txt) {
+    alert("Pega los SKUs o sube el archivo.");
+    return;
+  }
+  const lines = txt.split(/\r?\n/).map(l => l.trim()).filter(l => l.length > 0);
+  const mapping = {};
+  const refs = state.planoNuevos.map(r => String(r[0]));
+  let detectedMode = null;
+
+  // Detect: pairs (tab/comma/semicolon-separated 2 cols), or single column
+  const pairLines = lines.filter(l => /[\t;,]/.test(l));
+  if (pairLines.length === lines.length) {
+    detectedMode = "pairs";
+    lines.forEach(l => {
+      const parts = l.split(/[\t;,]/).map(p => p.trim()).filter(p => p.length > 0);
+      if (parts.length >= 2) {
+        // Heuristic: SKU is usually all numeric or short. Find which side is the SKU.
+        const [a, b] = [parts[0], parts[parts.length-1]];
+        // Pair as (referencia, sku) where sku is shorter/numeric
+        const aIsRef = refs.includes(a);
+        const bIsRef = refs.includes(b);
+        if (aIsRef) mapping[a] = b;
+        else if (bIsRef) mapping[b] = a;
+        else mapping[a] = b;  // default order: ref,sku
+      }
+    });
+  } else {
+    // Single-column: assume same order as plano
+    detectedMode = "sequential";
+    if (lines.length !== refs.length) {
+      alert(`Se esperaban ${refs.length} SKUs (uno por referencia) y se recibieron ${lines.length}. Verifica.`);
+      return;
+    }
+    lines.forEach((sku, i) => mapping[refs[i]] = sku);
+  }
+
+  state.skuMapping = mapping;
+  // Validate all refs were assigned
+  const missing = refs.filter(r => !mapping[r]);
+  if (missing.length > 0) {
+    document.getElementById('skuPreview').classList.remove('hidden');
+    document.getElementById('skuPreview').innerHTML = `<div class="alert err">No se asignó SKU a ${missing.length} referencia(s): ${missing.slice(0,10).join(", ")}${missing.length>10?"...":""}</div>`;
+    return;
+  }
+
+  // Preview
+  document.getElementById('skuPreview').classList.remove('hidden');
+  document.getElementById('skuPreview').innerHTML = `
+    <div class="alert success">✓ ${refs.length} SKUs asignados correctamente. Modo: <strong>${detectedMode === "pairs" ? "pares (referencia + SKU)" : "secuencial"}</strong>.</div>
+    <div class="table-wrap" style="max-height:300px">
+      <table>
+        <thead><tr><th>Referencia</th><th>SKU SIESA</th></tr></thead>
+        <tbody>
+          ${refs.map(r => `<tr><td>${esc(r)}</td><td><strong>${esc(mapping[r])}</strong></td></tr>`).join("")}
+        </tbody>
+      </table>
+    </div>
+    <div class="btn-row">
+      <button class="btn btn-primary" onclick="buildFinalPlanos()">✓ Generar planos finales →</button>
+    </div>`;
+}
+
+/* ==================================================================
+   FINAL PLANOS
+   ================================================================== */
+function buildFinalPlanos() {
+  const fecha = state.fecha;
+  const tallas = ["XS","*XS","S","*S","M","*M","L","*L","XL","*XL","XXL","*XXL"];
+
+  // Extensiones: ITEM | EXT 1 | FECHA CREACION
+  // Parametros : TIEMPO DE PRODUCCION (75) | ITEM | EXT
+  const exts = [];
+  const params = [];
+  state.planoNuevos.forEach((row, i) => {
+    const ref = row[0];
+    const sku = state.skuMapping[ref];
+    tallas.forEach(t => {
+      exts.push([sku, t, fecha]);
+      params.push([75, sku, t]);
+    });
+  });
+
+  // Criterios: hasta 10 registros por ítem (uno por plan aplicable).
+  // - COLECCIÓN solo aplica a MATTELSA y toma el valor de PROYECTO.
+  // - DROP, COMPLEJIDAD y ESPECIAL son opcionales: si están vacíos, simplemente
+  //   no se genera ese criterio (no bloquean la generación).
+  const criterios = [];
+  function pushCriterio(sku, planId, valueText) {
+    if (isEmpty(valueText)) return;
+    const mayor = lookupMayor(planId, valueText);
+    if (mayor === null) return;  // no se encontró en el catálogo - se omite
+    criterios.push([sku, planId, mayor]);
+  }
+  state.rows.forEach((r, i) => {
+    const ref = state.planoNuevos[i][0];
+    const sku = state.skuMapping[ref];
+    const cliente = norm(r.CLIENTE);
+
+    pushCriterio(sku, PLAN_IDS.GENERO, r.GENERO);
+    pushCriterio(sku, PLAN_IDS.CATEGORIA, r.CATEGORIA);
+    pushCriterio(sku, PLAN_IDS.CLIENTE, r.CLIENTE);
+    if (cliente === "MATTELSA") {
+      // Colección = mismo valor de Proyecto, únicamente para Mattelsa
+      pushCriterio(sku, PLAN_IDS.COLECCION, r.PROYECTO);
+    }
+    pushCriterio(sku, PLAN_IDS.ESPECIAL, r.ESPECIAL);
+    pushCriterio(sku, PLAN_IDS.LOTE, r.LOTE);
+    pushCriterio(sku, PLAN_IDS.DROP, r.DROP);
+    pushCriterio(sku, PLAN_IDS.PROYECTO, r.PROYECTO);
+    pushCriterio(sku, PLAN_IDS.COMPLEJIDAD, r.COMPLEJIDAD);
+    pushCriterio(sku, PLAN_IDS.TIPO_TEJIDO, r.TIPO_TEJIDO);
+  });
+
+  state.extensiones = exts;
+  state.parametros = params;
+  state.criterios = criterios;
+
+  // Render summary
+  document.getElementById('finalSummary').innerHTML = `
+    <div class="card"><div class="lbl">SKUs</div><div class="val">${state.planoNuevos.length}</div></div>
+    <div class="card"><div class="lbl">Extensiones</div><div class="val">${exts.length}</div></div>
+    <div class="card"><div class="lbl">Parámetros</div><div class="val">${params.length}</div></div>
+    <div class="card"><div class="lbl">Criterios</div><div class="val">${criterios.length}</div></div>
+  `;
+  document.getElementById('readyMsg').style.display = 'block';
+  document.getElementById('finalFiles').innerHTML = `
+    <li><span class="name">Items Nuevos PT - Ura.xlsx</span>
+        <button class="btn btn-secondary" onclick="downloadPlanoNuevos()">⬇ Descargar</button></li>
+    <li><span class="name">Items Extensiones - Ura.xlsx</span>
+        <button class="btn btn-secondary" onclick="downloadExtensiones()">⬇ Descargar</button></li>
+    <li><span class="name">Parametros de Planeacion Ing. PTP - Ura.xlsx</span>
+        <button class="btn btn-secondary" onclick="downloadParametros()">⬇ Descargar</button></li>
+    <li><span class="name">Items Criterios Ura.xlsx</span>
+        <button class="btn btn-secondary" onclick="downloadCriterios()">⬇ Descargar</button></li>
+  `;
+
+  // Render small previews
+  document.getElementById('previewExtensiones').innerHTML = previewTable("Items Extensiones — primeras 12 filas",
+    ["ITEM","EXT 1","FECHA CREACION"], exts.slice(0,12));
+  document.getElementById('previewParametros').innerHTML = previewTable("Parámetros — primeras 12 filas",
+    ["TIEMPO DE PRODUCCION","ITEM","EXT"], params.slice(0,12));
+  document.getElementById('previewCriterios').innerHTML = previewTable("Items Criterios — primeras 20 filas",
+    ["Item","Plan","Mayor"], criterios.slice(0,20));
+
+  goToStep(5);
+}
+
+function previewTable(title, headers, rows) {
+  return `<div style="margin:14px 0"><strong>${esc(title)}</strong>
+    <div class="table-wrap" style="max-height:240px;margin-top:6px">
+      <table>
+        <thead><tr>${headers.map(h => `<th>${esc(h)}</th>`).join("")}</tr></thead>
+        <tbody>${rows.map(r => `<tr>${r.map(c => `<td>${esc(c)}</td>`).join("")}</tr>`).join("")}</tbody>
+      </table>
+    </div></div>`;
+}
+
+function downloadExtensiones() {
+  const data = [["ITEM","EXT 1","FECHA CREACION"]].concat(state.extensiones);
+  downloadExcel(data, "Versión", "Items Extensiones - Ura.xlsx");
+}
+function downloadParametros() {
+  const data = [["TIEMPO DE PRODUCCION","ITEM","EXT"]].concat(state.parametros);
+  downloadExcel(data, "Versión", "Parametros de Planeacion Ing. PTP - Ura.xlsx");
+}
+function downloadCriterios() {
+  const data = [["Item","Plan","Mayor"]].concat(state.criterios);
+  downloadExcel(data, "Criterios", "Items Criterios Ura.xlsx");
+}
+function downloadAll() {
+  downloadPlanoNuevos();
+  setTimeout(downloadExtensiones, 250);
+  setTimeout(downloadParametros, 500);
+  setTimeout(downloadCriterios, 750);
+}
+
+function downloadExcel(data, sheetName, filename) {
+  const ws = XLSX.utils.aoa_to_sheet(data);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, sheetName);
+  XLSX.writeFile(wb, filename);
+}
+
+function resetAll() {
+  if (!confirm("¿Reiniciar la herramienta? Se perderán los datos cargados.")) return;
+  state = {rows:[], planoNuevos:null, skuMapping:{}, extensiones:null, parametros:null, criterios:null, fecha:yyyymmddToday()};
+  document.getElementById('fileInput').value = "";
+  document.getElementById('skuFile').value = "";
+  document.getElementById('skusInput').value = "";
+  document.getElementById('loadError').innerHTML = "";
+  goToStep(1);
+}
+</script>
+</body>
+</html>
