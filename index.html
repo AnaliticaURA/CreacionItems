@@ -238,11 +238,32 @@
       <input type="file" id="fileInput" accept=".xlsx,.xlsm" style="display:none" />
     </div>
     <div id="loadError"></div>
+
+    <details style="margin-top:24px">
+      <summary>📊 Catálogo de Planes y Mayores (opcional — usa el más actualizado)</summary>
+      <div class="body">
+        <p style="margin-bottom:12px">
+          La herramienta trae un catálogo de Mayores embebido. Si tienes a mano la versión más
+          reciente de <strong>Planes, mayores.xlsx</strong>, cárgala aquí: se usará para validar los
+          criterios y, si necesitas crear criterios nuevos en SIESA, podrás descargar el archivo
+          completo ya actualizado con las filas nuevas agregadas.
+        </p>
+        <div class="dropzone" id="dropzonePM" style="padding:20px">
+          <div class="icon" style="font-size:24px">📁</div>
+          <div><strong>Arrastra Planes, mayores.xlsx</strong> o haz clic para seleccionarlo</div>
+          <input type="file" id="planesMayoresFile" accept=".xlsx,.xlsm" style="display:none" />
+        </div>
+        <div id="planesMayoresStatus" style="margin-top:12px">
+          <div class="alert info">Usando el catálogo de Mayores embebido (predeterminado).</div>
+        </div>
+      </div>
+    </details>
   </div>
 
   <!-- STEP 2: VALIDATE & EDIT -->
   <div id="panel2" class="panel hidden">
     <h2>2 · Validar y completar información</h2>
+
     <p class="desc">Edita cualquier campo directamente. Las celdas resaltadas indican datos obligatorios faltantes.</p>
 
     <div class="summary" id="summaryCards"></div>
@@ -316,27 +337,33 @@ CAMISETA DNT_127(11-26-NEGRO)    5428"></textarea>
     <h2>5 · Planos finales para SIESA</h2>
     <p class="desc">Descarga los 3 planos restantes. Cada uno está listo para cargar en SIESA sin edición manual.</p>
 
-    <div class="summary" id="finalSummary"></div>
+    <!-- Sección: criterios que no existen aún en el catálogo de Mayores -->
+    <div id="pendingCriteriaSection" class="hidden"></div>
 
-    <div class="alert success" id="readyMsg" style="display:none">
-      <strong>✓ Planos generados.</strong> Descárgalos a continuación.
-    </div>
+    <!-- Sección: resultados finales (solo visible cuando no hay pendientes) -->
+    <div id="finalResultsSection" class="hidden">
+      <div class="summary" id="finalSummary"></div>
 
-    <ul class="file-list" id="finalFiles"></ul>
-
-    <details>
-      <summary>Vista previa de los planos</summary>
-      <div class="body">
-        <div id="previewExtensiones"></div>
-        <div id="previewParametros"></div>
-        <div id="previewCriterios"></div>
+      <div class="alert success" id="readyMsg" style="display:none">
+        <strong>✓ Planos generados.</strong> <span id="newMayoresNote"></span>
       </div>
-    </details>
 
-    <div class="btn-row">
-      <button class="btn btn-outline" onclick="backToStep(4)">← Volver a SKUs</button>
-      <button class="btn btn-secondary" onclick="downloadAll()">⬇ Descargar todos (ZIP individual)</button>
-      <button class="btn btn-primary" onclick="resetAll()">Empezar de nuevo</button>
+      <ul class="file-list" id="finalFiles"></ul>
+
+      <details>
+        <summary>Vista previa de los planos</summary>
+        <div class="body">
+          <div id="previewExtensiones"></div>
+          <div id="previewParametros"></div>
+          <div id="previewCriterios"></div>
+        </div>
+      </details>
+
+      <div class="btn-row">
+        <button class="btn btn-outline" onclick="backToStep(4)">← Volver a SKUs</button>
+        <button class="btn btn-secondary" onclick="downloadAll()">⬇ Descargar todos (ZIP individual)</button>
+        <button class="btn btn-primary" onclick="resetAll()">Empezar de nuevo</button>
+      </div>
     </div>
   </div>
 </div>
@@ -384,6 +411,11 @@ const PLAN_IDS = {
   GENERO: 1, CATEGORIA: 2, CLIENTE: 3, COLECCION: 5, ESPECIAL: 7,
   LOTE: 8, DROP: 10, PROYECTO: 12, COMPLEJIDAD: 14, TIPO_TEJIDO: 25
 };
+// Descripciones de Plan tal como aparecen en Planes, mayores.xlsx (hoja MAYORES, col. B)
+const PLAN_DESC = {
+  1: "GENERO", 2: "CATEGORIA", 3: "CLIENTE", 5: "COLECCIÓN", 7: "ESPECIAL",
+  8: "LOTE", 10: "DROP", 12: "PROYECTO", 14: "COMPLEJIDAD", 25: "TIPO TEJIDO"
+};
 
 let state = {
   rows: [],            // [{GENERO,CATEGORIA,...}, ...]
@@ -392,7 +424,20 @@ let state = {
   extensiones: null,
   parametros: null,
   criterios: null,
-  fecha: yyyymmddToday()
+  fecha: yyyymmddToday(),
+  // Criterios cuyo valor no existe en el catálogo de Mayores.
+  // criterioOverrides: { "planId|VALOR_NORMALIZADO": {mayorId} | {skip:true} }
+  criterioOverrides: {},
+  pendingCriterios: [],     // último listado de pendientes mostrado al usuario
+  newMayoresCreated: [],    // {planId, planDesc, mayorId, valueText} - para exportar a Planes,Mayores.xlsx
+  // Catálogo de Planes y Mayores cargado manualmente (opcional)
+  planesMayoresLoaded: false,
+  planesMayoresWB: null,        // workbook completo (SheetJS) tal como se subió
+  planesMayoresSheetName: null, // nombre real de la hoja MAYORES en el archivo subido
+  planesMayoresAOA: null,       // datos de esa hoja como array de arrays (incluye encabezado)
+  planesMayoresCols: {},        // índices de columnas detectados {planIdx, mayorIdx, descMayorIdx, descPlanIdx, concatIdx}
+  planesMayoresFileName: null,
+  planDescFromFile: {}          // descripción real de cada Plan tomada del archivo subido
 };
 
 // Build text->mayor lookup per plan
@@ -406,7 +451,9 @@ function buildMayorLookup() {
   }
   return lookup;
 }
-const MAYOR_LOOKUP = buildMayorLookup();
+let MAYOR_LOOKUP = buildMayorLookup();
+// Copia del catálogo embebido original, para poder "quitar" un catálogo cargado manualmente
+const DEFAULT_MAYORES = JSON.parse(JSON.stringify(CATALOGOS.mayores));
 
 /* ==================================================================
    UTILITIES
@@ -416,6 +463,7 @@ function yyyymmddToday() {
   return d.getFullYear()*10000 + (d.getMonth()+1)*100 + d.getDate();
 }
 function norm(s) { return s == null ? "" : String(s).trim().toUpperCase(); }
+function normAccents(s) { return s.normalize ? s.normalize("NFD").replace(/[\u0300-\u036f]/g, "") : s; }
 function isEmpty(v) { return v === null || v === undefined || String(v).trim() === ""; }
 
 function lookupNomCliente(cliente) {
@@ -530,6 +578,114 @@ function mapHeaderToKey(h) {
     // se deriva automáticamente del PROYECTO; para los demás clientes no aplica.
   };
   return m[h] || null;
+}
+
+/* ==================================================================
+   CATÁLOGO MANUAL: Planes, mayores.xlsx (opcional)
+   ================================================================== */
+const dzPM = document.getElementById('dropzonePM');
+const planesMayoresFileInput = document.getElementById('planesMayoresFile');
+dzPM.onclick = () => planesMayoresFileInput.click();
+dzPM.ondragover = (e) => { e.preventDefault(); dzPM.classList.add('dragover'); };
+dzPM.ondragleave = () => dzPM.classList.remove('dragover');
+dzPM.ondrop = (e) => {
+  e.preventDefault(); dzPM.classList.remove('dragover');
+  if (e.dataTransfer.files[0]) handlePlanesMayoresFile(e.dataTransfer.files[0]);
+};
+planesMayoresFileInput.onchange = (e) => { if (e.target.files[0]) handlePlanesMayoresFile(e.target.files[0]); };
+
+function findColIndex(headers, predicate) {
+  return headers.findIndex(predicate);
+}
+
+async function handlePlanesMayoresFile(file) {
+  const statusBox = document.getElementById('planesMayoresStatus');
+  try {
+    const buf = await file.arrayBuffer();
+    const wb = XLSX.read(buf, {type:'array'});
+
+    // Buscar la hoja "MAYORES" de forma tolerante
+    let mayoresSheetName = wb.SheetNames.find(n => normAccents(norm(n)) === "MAYORES")
+      || wb.SheetNames.find(n => normAccents(norm(n)).includes("MAYOR"));
+    if (!mayoresSheetName) {
+      throw new Error("No se encontró una hoja 'MAYORES' en el archivo. Hojas disponibles: " + wb.SheetNames.join(", "));
+    }
+    const ws = wb.Sheets[mayoresSheetName];
+    const aoa = XLSX.utils.sheet_to_json(ws, {header:1, defval:null, raw:true});
+    if (aoa.length < 2) throw new Error("La hoja '"+mayoresSheetName+"' no tiene datos.");
+
+    const headers = aoa[0].map(h => normAccents(norm(String(h||""))));
+    const planIdx      = findColIndex(headers, h => h === "PLAN");
+    const mayorIdx      = findColIndex(headers, h => h === "MAYOR");
+    const descMayorIdx  = findColIndex(headers, h => h.includes("DESCRIPCION MAYOR") || h.includes("DESCRIPCIONMAYOR"));
+    const descPlanIdx   = findColIndex(headers, h => h.includes("DESCRIPCION PLAN") || h.includes("DESCRIPCIONPLAN"));
+    const concatIdx     = findColIndex(headers, h => h.includes("CONCATENAR") || h.includes("CONCAT"));
+
+    if (planIdx < 0 || mayorIdx < 0 || descMayorIdx < 0) {
+      throw new Error("No se encontraron las columnas esperadas (PLAN, MAYOR, DESCRIPCION MAYOR) en la hoja '"+mayoresSheetName+"'.");
+    }
+
+    const newMayores = {};
+    const planDescFromFile = {};
+    let rowCount = 0;
+    for (let r=1; r<aoa.length; r++) {
+      const row = aoa[r];
+      if (!row) continue;
+      const planVal = row[planIdx];
+      const mayorVal = row[mayorIdx];
+      const descVal = row[descMayorIdx];
+      if (planVal == null || mayorVal == null || descVal == null) continue;
+      const planStr = String(planVal).trim();
+      if (!newMayores[planStr]) newMayores[planStr] = [];
+      newMayores[planStr].push([String(mayorVal).trim(), String(descVal).trim()]);
+      if (descPlanIdx >= 0 && row[descPlanIdx] != null && !planDescFromFile[planStr]) {
+        planDescFromFile[planStr] = String(row[descPlanIdx]).trim();
+      }
+      rowCount++;
+    }
+    if (rowCount === 0) throw new Error("No se encontraron filas válidas de Mayores en el archivo.");
+
+    // Aplicar el catálogo cargado
+    CATALOGOS.mayores = newMayores;
+    MAYOR_LOOKUP = buildMayorLookup();
+
+    state.planesMayoresLoaded = true;
+    state.planesMayoresWB = wb;
+    state.planesMayoresSheetName = mayoresSheetName;
+    state.planesMayoresAOA = aoa;
+    state.planesMayoresCols = {planIdx, mayorIdx, descMayorIdx, descPlanIdx, concatIdx};
+    state.planesMayoresFileName = file.name;
+    state.planDescFromFile = planDescFromFile;
+
+    statusBox.innerHTML = `
+      <div class="alert success">
+        ✓ Catálogo cargado desde <strong>${esc(file.name)}</strong>: ${rowCount} mayores en ${Object.keys(newMayores).length} planes.
+        Se usará este catálogo para validar criterios. Si necesitas crear criterios nuevos en SIESA,
+        al finalizar podrás descargar este mismo archivo ya actualizado con las filas nuevas.
+      </div>
+      <button class="btn btn-outline" onclick="clearPlanesMayoresOverride()">✕ Quitar y volver al catálogo embebido</button>
+    `;
+    // Si ya hay filas cargadas, refresca la tabla para que los dropdowns reflejen el nuevo catálogo
+    if (state.rows && state.rows.length) renderEditorTable();
+  } catch(err) {
+    statusBox.innerHTML = `<div class="alert err"><strong>Error al leer el catálogo:</strong> ${esc(err.message)}</div>`;
+  }
+}
+
+function clearPlanesMayoresOverride() {
+  CATALOGOS.mayores = JSON.parse(JSON.stringify(DEFAULT_MAYORES));
+  MAYOR_LOOKUP = buildMayorLookup();
+  state.planesMayoresLoaded = false;
+  state.planesMayoresWB = null;
+  state.planesMayoresSheetName = null;
+  state.planesMayoresAOA = null;
+  state.planesMayoresCols = {};
+  state.planesMayoresFileName = null;
+  state.planDescFromFile = {};
+  document.getElementById('planesMayoresStatus').innerHTML =
+    `<div class="alert info">Usando el catálogo de Mayores embebido (predeterminado).</div>`;
+  planesMayoresFileInput.value = "";
+  if (state.rows && state.rows.length) renderEditorTable();
 }
 
 /* ==================================================================
@@ -878,7 +1034,7 @@ function buildFinalPlanos() {
   // Parametros : TIEMPO DE PRODUCCION (75) | ITEM | EXT
   const exts = [];
   const params = [];
-  state.planoNuevos.forEach((row, i) => {
+  state.planoNuevos.forEach((row) => {
     const ref = row[0];
     const sku = state.skuMapping[ref];
     tallas.forEach(t => {
@@ -891,45 +1047,222 @@ function buildFinalPlanos() {
   // - COLECCIÓN solo aplica a MATTELSA y toma el valor de PROYECTO.
   // - DROP, COMPLEJIDAD y ESPECIAL son opcionales: si están vacíos, simplemente
   //   no se genera ese criterio (no bloquean la generación).
-  const criterios = [];
-  function pushCriterio(sku, planId, valueText) {
-    if (isEmpty(valueText)) return;
-    const mayor = lookupMayor(planId, valueText);
-    if (mayor === null) return;  // no se encontró en el catálogo - se omite
-    criterios.push([sku, planId, mayor]);
-  }
-  state.rows.forEach((r, i) => {
-    const ref = state.planoNuevos[i][0];
-    const sku = state.skuMapping[ref];
-    const cliente = norm(r.CLIENTE);
+  // - Si un valor SÍ existe pero no está en el catálogo de Mayores, se marca
+  //   como "pendiente de creación en SIESA" y se bloquea hasta que el usuario
+  //   ingrese el ID de Mayor asignado (o lo marque como omitido).
+  const {criterios, pending, invalidLote} = collectCriterios();
 
-    pushCriterio(sku, PLAN_IDS.GENERO, r.GENERO);
-    pushCriterio(sku, PLAN_IDS.CATEGORIA, r.CATEGORIA);
-    pushCriterio(sku, PLAN_IDS.CLIENTE, r.CLIENTE);
-    if (cliente === "MATTELSA") {
-      // Colección = mismo valor de Proyecto, únicamente para Mattelsa
-      pushCriterio(sku, PLAN_IDS.COLECCION, r.PROYECTO);
-    }
-    pushCriterio(sku, PLAN_IDS.ESPECIAL, r.ESPECIAL);
-    pushCriterio(sku, PLAN_IDS.LOTE, r.LOTE);
-    pushCriterio(sku, PLAN_IDS.DROP, r.DROP);
-    pushCriterio(sku, PLAN_IDS.PROYECTO, r.PROYECTO);
-    pushCriterio(sku, PLAN_IDS.COMPLEJIDAD, r.COMPLEJIDAD);
-    pushCriterio(sku, PLAN_IDS.TIPO_TEJIDO, r.TIPO_TEJIDO);
-  });
+  if (invalidLote.length > 0) {
+    renderInvalidLotePanel(invalidLote);
+    goToStep(5);
+    return;
+  }
+  if (pending.length > 0) {
+    state.pendingCriterios = pending;
+    renderPendingCriteriaPanel(pending);
+    goToStep(5);
+    return;
+  }
 
   state.extensiones = exts;
   state.parametros = params;
   state.criterios = criterios;
 
-  // Render summary
+  renderFinalResults(exts, params, criterios);
+  goToStep(5);
+}
+
+// Construye la lista de criterios resolviendo contra el catálogo de Mayores.
+// Cualquier valor no encontrado se agrupa (por plan+valor) en "pending" para
+// solicitarlo en SIESA una sola vez, sin importar cuántos ítems lo usen.
+function collectCriterios() {
+  const criterios = [];
+  const pendingMap = {};
+  const invalidLote = [];
+
+  function resolveOrFlag(sku, ref, planId, valueText) {
+    if (isEmpty(valueText)) return; // campo opcional/ausente - se omite
+    if (planId === PLAN_IDS.LOTE) {
+      const num = parseInt(valueText, 10);
+      if (isNaN(num)) { invalidLote.push({ref, valueText}); return; }
+      criterios.push([sku, planId, String(num)]);
+      return;
+    }
+    const key = planId + "|" + norm(valueText);
+    const override = state.criterioOverrides[key];
+    if (override) {
+      if (override.skip) return;
+      criterios.push([sku, planId, override.mayorId]);
+      return;
+    }
+    const mayor = lookupMayor(planId, valueText);
+    if (mayor !== null) { criterios.push([sku, planId, mayor]); return; }
+    if (!pendingMap[key]) pendingMap[key] = {planId, valueText, refs: []};
+    if (!pendingMap[key].refs.includes(ref)) pendingMap[key].refs.push(ref);
+  }
+
+  state.rows.forEach((r, i) => {
+    const ref = state.planoNuevos[i][0];
+    const sku = state.skuMapping[ref];
+    const cliente = norm(r.CLIENTE);
+
+    resolveOrFlag(sku, ref, PLAN_IDS.GENERO, r.GENERO);
+    resolveOrFlag(sku, ref, PLAN_IDS.CATEGORIA, r.CATEGORIA);
+    resolveOrFlag(sku, ref, PLAN_IDS.CLIENTE, r.CLIENTE);
+    if (cliente === "MATTELSA") {
+      resolveOrFlag(sku, ref, PLAN_IDS.COLECCION, r.PROYECTO);
+    }
+    resolveOrFlag(sku, ref, PLAN_IDS.ESPECIAL, r.ESPECIAL);
+    resolveOrFlag(sku, ref, PLAN_IDS.LOTE, r.LOTE);
+    resolveOrFlag(sku, ref, PLAN_IDS.DROP, r.DROP);
+    resolveOrFlag(sku, ref, PLAN_IDS.PROYECTO, r.PROYECTO);
+    resolveOrFlag(sku, ref, PLAN_IDS.COMPLEJIDAD, r.COMPLEJIDAD);
+    resolveOrFlag(sku, ref, PLAN_IDS.TIPO_TEJIDO, r.TIPO_TEJIDO);
+  });
+
+  return {criterios, pending: Object.values(pendingMap), invalidLote};
+}
+
+/* ------------------------------------------------------------------
+   Panel: criterios pendientes de creación en SIESA
+   ------------------------------------------------------------------ */
+function renderPendingCriteriaPanel(pending) {
+  document.getElementById('finalResultsSection').classList.add('hidden');
+  const box = document.getElementById('pendingCriteriaSection');
+  box.classList.remove('hidden');
+
+  const rows = pending.map((p, i) => `
+    <tr>
+      <td>${esc(PLAN_DESC[p.planId] || ("Plan " + p.planId))}</td>
+      <td><strong>${esc(p.valueText)}</strong></td>
+      <td class="text-muted">${esc(p.refs.join(", "))}</td>
+      <td><input type="text" id="pendingInput_${i}" placeholder="Ej: 54" style="width:110px"/></td>
+      <td style="white-space:nowrap"><label style="font-size:11px;font-weight:400">
+        <input type="checkbox" id="pendingSkip_${i}" onchange="togglePendingSkip(${i})"/> Omitir
+      </label></td>
+    </tr>`).join("");
+
+  box.innerHTML = `
+    <div class="alert warn">
+      <strong>⚠ Hay ${pending.length} criterio(s) que no existen en el catálogo de Mayores.</strong>
+      Debes solicitar su creación en SIESA. Una vez SIESA asigne el ID de Mayor, ingrésalo en la
+      columna correspondiente y continúa. Si un criterio no aplica, puedes marcarlo como "Omitir".
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr>
+          <th>Plan</th><th>Valor a crear</th><th>Referencias/Items afectados</th>
+          <th>ID Mayor asignado por SIESA</th><th></th>
+        </tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>
+    <div class="btn-row">
+      <button class="btn btn-outline" onclick="downloadSolicitudSiesa()">⬇ Descargar solicitud para SIESA</button>
+      <button class="btn btn-outline" onclick="backToStep(4)">← Volver a SKUs</button>
+      <button class="btn btn-primary" onclick="applyPendingCriteria()">✓ Ya tengo los IDs — continuar</button>
+    </div>
+  `;
+}
+
+function togglePendingSkip(i) {
+  const inputEl = document.getElementById(`pendingInput_${i}`);
+  const skipEl = document.getElementById(`pendingSkip_${i}`);
+  if (inputEl) inputEl.disabled = skipEl.checked;
+}
+
+function downloadSolicitudSiesa() {
+  const rows = state.pendingCriterios.map(p => [
+    PLAN_DESC[p.planId] || "", p.planId, p.valueText, p.refs.join(", ")
+  ]);
+  const data = [["Plan","ID Plan","Valor a crear","Referencias / Items afectados"]].concat(rows);
+  downloadExcel(data, "Solicitud", "Solicitud_nuevos_criterios_SIESA.xlsx");
+}
+
+function applyPendingCriteria() {
+  let allResolved = true;
+  const newlyCreated = [];
+
+  state.pendingCriterios.forEach((p, i) => {
+    const skipEl = document.getElementById(`pendingSkip_${i}`);
+    const skip = !!(skipEl && skipEl.checked);
+    const inputEl = document.getElementById(`pendingInput_${i}`);
+    const val = inputEl ? inputEl.value.trim() : "";
+    const key = p.planId + "|" + norm(p.valueText);
+
+    if (skip) {
+      state.criterioOverrides[key] = {skip: true};
+      return;
+    }
+    if (!val) { allResolved = false; return; }
+
+    state.criterioOverrides[key] = {mayorId: val};
+    // Actualiza el catálogo en memoria para que la sesión actual ya reconozca este valor
+    // (próximas filas con el mismo valor, dropdowns, etc.)
+    const planStr = String(p.planId);
+    CATALOGOS.mayores[planStr] = CATALOGOS.mayores[planStr] || [];
+    CATALOGOS.mayores[planStr].push([val, p.valueText]);
+    MAYOR_LOOKUP[planStr] = MAYOR_LOOKUP[planStr] || {};
+    MAYOR_LOOKUP[planStr][norm(p.valueText)] = val;
+
+    newlyCreated.push({
+      planId: p.planId,
+      planDesc: PLAN_DESC[p.planId] || "",
+      mayorId: val,
+      valueText: p.valueText
+    });
+  });
+
+  if (!allResolved) {
+    alert("Ingresa el ID de Mayor asignado por SIESA para cada criterio pendiente, o márcalo como 'Omitir'.");
+    return;
+  }
+
+  state.newMayoresCreated = (state.newMayoresCreated || []).concat(newlyCreated);
+  buildFinalPlanos(); // reintenta; si todo quedó resuelto, pasa a los resultados finales
+}
+
+/* ------------------------------------------------------------------
+   Panel: valores de LOTE inválidos (no numéricos)
+   ------------------------------------------------------------------ */
+function renderInvalidLotePanel(invalidLote) {
+  document.getElementById('finalResultsSection').classList.add('hidden');
+  const box = document.getElementById('pendingCriteriaSection');
+  box.classList.remove('hidden');
+  const rows = invalidLote.map(l => `<li>${esc(l.ref)} — Lote: "${esc(l.valueText)}"</li>`).join("");
+  box.innerHTML = `
+    <div class="alert err">
+      <strong>El campo LOTE debe ser numérico.</strong> Corrige los siguientes valores en el paso 2:
+      <ul>${rows}</ul>
+    </div>
+    <div class="btn-row">
+      <button class="btn btn-primary" onclick="backToStep(2)">← Volver a editar</button>
+    </div>
+  `;
+}
+
+/* ------------------------------------------------------------------
+   Resultados finales
+   ------------------------------------------------------------------ */
+function renderFinalResults(exts, params, criterios) {
+  document.getElementById('pendingCriteriaSection').classList.add('hidden');
+  document.getElementById('pendingCriteriaSection').innerHTML = "";
+  document.getElementById('finalResultsSection').classList.remove('hidden');
+
   document.getElementById('finalSummary').innerHTML = `
     <div class="card"><div class="lbl">SKUs</div><div class="val">${state.planoNuevos.length}</div></div>
     <div class="card"><div class="lbl">Extensiones</div><div class="val">${exts.length}</div></div>
     <div class="card"><div class="lbl">Parámetros</div><div class="val">${params.length}</div></div>
     <div class="card"><div class="lbl">Criterios</div><div class="val">${criterios.length}</div></div>
+    ${state.newMayoresCreated.length ? `<div class="card" style="border-color:var(--ura-warning)"><div class="lbl">Mayores nuevos creados</div><div class="val">${state.newMayoresCreated.length}</div></div>` : ""}
   `;
   document.getElementById('readyMsg').style.display = 'block';
+  document.getElementById('newMayoresNote').innerHTML = state.newMayoresCreated.length
+    ? (state.planesMayoresLoaded
+        ? `Se crearon ${state.newMayoresCreated.length} criterio(s) nuevo(s) en SIESA. Descarga abajo el archivo <strong>Planes, mayores.xlsx</strong> ya actualizado con las filas nuevas.`
+        : `Se crearon ${state.newMayoresCreated.length} criterio(s) nuevo(s) en SIESA. Recuerda actualizar el archivo maestro <strong>Planes, mayores.xlsx</strong> con el archivo adjunto.`)
+    : "Descárgalos a continuación.";
+
   document.getElementById('finalFiles').innerHTML = `
     <li><span class="name">Items Nuevos PT - Ura.xlsx</span>
         <button class="btn btn-secondary" onclick="downloadPlanoNuevos()">⬇ Descargar</button></li>
@@ -939,17 +1272,17 @@ function buildFinalPlanos() {
         <button class="btn btn-secondary" onclick="downloadParametros()">⬇ Descargar</button></li>
     <li><span class="name">Items Criterios Ura.xlsx</span>
         <button class="btn btn-secondary" onclick="downloadCriterios()">⬇ Descargar</button></li>
+    ${state.newMayoresCreated.length ? `
+    <li style="border:1px solid var(--ura-warning)"><span class="name">${state.planesMayoresLoaded ? "Planes, mayores - actualizado.xlsx" : "Nuevos_Mayores_para_actualizar_Planes_Mayores.xlsx"}</span>
+        <button class="btn btn-secondary" onclick="downloadNuevosMayores()">⬇ Descargar</button></li>` : ""}
   `;
 
-  // Render small previews
   document.getElementById('previewExtensiones').innerHTML = previewTable("Items Extensiones — primeras 12 filas",
     ["ITEM","EXT 1","FECHA CREACION"], exts.slice(0,12));
   document.getElementById('previewParametros').innerHTML = previewTable("Parámetros — primeras 12 filas",
     ["TIEMPO DE PRODUCCION","ITEM","EXT"], params.slice(0,12));
   document.getElementById('previewCriterios').innerHTML = previewTable("Items Criterios — primeras 20 filas",
     ["Item","Plan","Mayor"], criterios.slice(0,20));
-
-  goToStep(5);
 }
 
 function previewTable(title, headers, rows) {
@@ -974,11 +1307,63 @@ function downloadCriterios() {
   const data = [["Item","Plan","Mayor"]].concat(state.criterios);
   downloadExcel(data, "Criterios", "Items Criterios Ura.xlsx");
 }
+function downloadNuevosMayores() {
+  if (state.planesMayoresLoaded && state.planesMayoresWB) {
+    downloadUpdatedPlanesMayores();
+  } else {
+    downloadNuevosMayoresSupplement();
+  }
+}
+
+// Caso sin catálogo cargado: archivo complementario con solo las filas nuevas,
+// para agregarlas manualmente a Planes, mayores.xlsx
+function downloadNuevosMayoresSupplement() {
+  const rows = (state.newMayoresCreated || []).map(c => [c.planId, c.planDesc, c.mayorId, c.valueText]);
+  const data = [["PLAN","DESCRIPCION PLAN","MAYOR","DESCRIPCION MAYOR"]].concat(rows);
+  downloadExcel(data, "Nuevos Mayores", "Nuevos_Mayores_para_actualizar_Planes_Mayores.xlsx");
+}
+
+// Caso con catálogo cargado: se regenera el archivo Planes, mayores.xlsx COMPLETO
+// (todas sus hojas originales intactas) con las filas nuevas agregadas al final
+// de la hoja MAYORES.
+function downloadUpdatedPlanesMayores() {
+  const cols = state.planesMayoresCols;
+  const aoa = state.planesMayoresAOA.map(r => (r ? r.slice() : []));
+
+  (state.newMayoresCreated || []).forEach(c => {
+    const row = [];
+    const planNum = Number(c.planId);
+    row[cols.planIdx] = isNaN(planNum) ? c.planId : planNum;
+    if (cols.descPlanIdx >= 0) {
+      row[cols.descPlanIdx] = state.planDescFromFile[String(c.planId)] || c.planDesc;
+    }
+    const mayorNum = Number(c.mayorId);
+    row[cols.mayorIdx] = isNaN(mayorNum) ? c.mayorId : mayorNum;
+    row[cols.descMayorIdx] = c.valueText;
+    if (cols.concatIdx >= 0) {
+      // Valor estático equivalente al de la fórmula original (PLAN-DESCRIPCION MAYOR).
+      // Al pegarse dentro de la tabla "Mayores" en Excel, la fórmula se puede
+      // volver a aplicar arrastrándola; aquí dejamos el texto ya calculado.
+      row[cols.concatIdx] = `${c.planId}-${c.valueText}`;
+    }
+    aoa.push(row);
+  });
+
+  const newWs = XLSX.utils.aoa_to_sheet(aoa);
+  state.planesMayoresWB.Sheets[state.planesMayoresSheetName] = newWs;
+
+  const baseName = (state.planesMayoresFileName || "Planes, mayores.xlsx").replace(/\.xlsx?$/i, "");
+  XLSX.writeFile(state.planesMayoresWB, `${baseName} - actualizado.xlsx`);
+}
+
 function downloadAll() {
   downloadPlanoNuevos();
   setTimeout(downloadExtensiones, 250);
   setTimeout(downloadParametros, 500);
   setTimeout(downloadCriterios, 750);
+  if (state.newMayoresCreated && state.newMayoresCreated.length) {
+    setTimeout(downloadNuevosMayores, 1000);
+  }
 }
 
 function downloadExcel(data, sheetName, filename) {
@@ -989,12 +1374,26 @@ function downloadExcel(data, sheetName, filename) {
 }
 
 function resetAll() {
-  if (!confirm("¿Reiniciar la herramienta? Se perderán los datos cargados.")) return;
-  state = {rows:[], planoNuevos:null, skuMapping:{}, extensiones:null, parametros:null, criterios:null, fecha:yyyymmddToday()};
+  if (!confirm("¿Reiniciar la herramienta? Se perderán los datos cargados (el catálogo de Planes y Mayores, si lo cargaste, se mantiene).")) return;
+  state = {
+    rows:[], planoNuevos:null, skuMapping:{}, extensiones:null, parametros:null, criterios:null,
+    fecha:yyyymmddToday(), criterioOverrides:{}, pendingCriterios:[], newMayoresCreated:[],
+    // Se preserva el catálogo de Planes y Mayores cargado manualmente, si existe
+    planesMayoresLoaded: state.planesMayoresLoaded,
+    planesMayoresWB: state.planesMayoresWB,
+    planesMayoresSheetName: state.planesMayoresSheetName,
+    planesMayoresAOA: state.planesMayoresAOA,
+    planesMayoresCols: state.planesMayoresCols,
+    planesMayoresFileName: state.planesMayoresFileName,
+    planDescFromFile: state.planDescFromFile
+  };
   document.getElementById('fileInput').value = "";
   document.getElementById('skuFile').value = "";
   document.getElementById('skusInput').value = "";
   document.getElementById('loadError').innerHTML = "";
+  document.getElementById('pendingCriteriaSection').classList.add('hidden');
+  document.getElementById('pendingCriteriaSection').innerHTML = "";
+  document.getElementById('finalResultsSection').classList.add('hidden');
   goToStep(1);
 }
 </script>
